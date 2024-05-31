@@ -177,6 +177,8 @@ async def help(bot, update):
 
 @xbot.on_message(filters.command('link') & (filters.private | filters.group))
 async def linkloader(bot, update):
+    if update.from_user is None:
+        return
     user_id = update.from_user.id
     chat_id = update.chat.id
     user_states[(user_id, chat_id)] = 'awaiting_links'
@@ -185,6 +187,8 @@ async def linkloader(bot, update):
 
 @xbot.on_message(filters.text & (filters.private | filters.group))
 async def handle_links(bot, message):
+    if message.from_user is None:
+        return
     user_id = message.from_user.id
     chat_id = message.chat.id
     if user_states.get((user_id, chat_id)) == 'awaiting_links':
@@ -242,6 +246,8 @@ async def process_links(update: Message, urlx):
 
 @xbot.on_message(filters.document & (filters.private | filters.group))
 async def loader(bot, update):
+    if update.from_user is None:
+        return
     if BUTTONS:
         await update.reply('You wanna upload files as?', True, reply_markup=InlineKeyboardMarkup(CB_BUTTONS))
     else:
@@ -297,6 +303,8 @@ async def loader(bot, update):
 
 @xbot.on_callback_query()
 async def callbacks(bot: Client, updatex: CallbackQuery):
+    if updatex.message.reply_to_message.from_user is None:
+        return
     cb_data = updatex.data
     update = updatex.message.reply_to_message
     await updatex.message.delete()

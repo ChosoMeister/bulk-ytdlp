@@ -1,0 +1,17 @@
+---
+  name: Publish image to ghcr.io
+  on:
+    - workflow_dispatch
+  jobs:
+    publish_image:
+      runs-on: ubuntu-latest
+      steps:
+        - name: checkout
+          uses: actions/checkout@v4
+        - name: build
+          run: |
+            docker build . -t ghcr.io/chosomeister/bulk-ytlp:latest
+        - name: publish
+          run: |
+            docker login -u chosomeister -p ${{ secrets.GGHCR_TOKEN }} ghcr.io
+            docker push ghcr.io/chosomeister/bulk-ytlp:latest

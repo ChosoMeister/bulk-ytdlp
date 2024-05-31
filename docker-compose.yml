@@ -1,0 +1,12 @@
+name: bulk-ytlp
+services:
+  bulk-ytlp:
+    environment:
+      - API_HASH=xxHASHIDxx
+      - APP_ID=xxAPPIDxx
+      - BOT_TOKEN=xxx:xxx
+      - OWNER_ID=xxYOURIDxx
+      - AS_ZIP=false
+      - BUTTONS=true
+    image: ghcr.io/chosomeister/bulk-ytlp:latest
+networks: {}

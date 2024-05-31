@@ -165,34 +165,28 @@ else:
 
 user_states = {}
 
+
 @xbot.on_message(filters.command('start') & OWNER_FILTER & filters.private)
 async def start(bot, update):
     await update.reply_text("I'm Bulk-ytdlp\nYou can upload a list of URLs\n\n/help for more details!", True, reply_markup=InlineKeyboardMarkup(START_BUTTONS))
 
 
-@xbot.on_message(filters.command('help') & (filters.private | filters.group))
+@xbot.on_message(filters.command('help') & OWNER_FILTER & filters.private)
 async def help(bot, update):
     await update.reply_text("How to use Bulk-ytdlp?!\n\n2 Methods:\n- send command /link and then send URLs, separated by new line.\n- send txt file (links), separated by new line.", True, reply_markup=InlineKeyboardMarkup(START_BUTTONS))
 
 
-@xbot.on_message(filters.command('link') & (filters.private | filters.group))
+@xbot.on_message(filters.command('link') & OWNER_FILTER & filters.private)
 async def linkloader(bot, update):
-    if update.from_user is None:
-        return
-    user_id = update.from_user.id
-    chat_id = update.chat.id
-    user_states[(user_id, chat_id)] = 'awaiting_links'
+    user_states[update.from_user.id] = 'awaiting_links'
     await update.reply_text('Send your links, separated each link by a new line')
 
 
-@xbot.on_message(filters.text & (filters.private | filters.group))
+@xbot.on_message(filters.text & OWNER_FILTER & filters.private)
 async def handle_links(bot, message):
-    if message.from_user is None:
-        return
     user_id = message.from_user.id
-    chat_id = message.chat.id
-    if user_states.get((user_id, chat_id)) == 'awaiting_links':
-        user_states[(user_id, chat_id)] = None  # Reset state
+    if user_states.get(user_id) == 'awaiting_links':
+        user_states[user_id] = None  # Reset state
         if BUTTONS:
             await message.reply('Uploading methods.', True, reply_markup=InlineKeyboardMarkup(CB_BUTTONS))
         else:
@@ -244,10 +238,8 @@ async def process_links(update: Message, urlx):
         shutil.rmtree(dirs)
 
 
-@xbot.on_message(filters.document & (filters.private | filters.group))
+@xbot.on_message(filters.document & OWNER_FILTER & filters.private)
 async def loader(bot, update):
-    if update.from_user is None:
-        return
     if BUTTONS:
         await update.reply('You wanna upload files as?', True, reply_markup=InlineKeyboardMarkup(CB_BUTTONS))
     else:
@@ -303,8 +295,6 @@ async def loader(bot, update):
 
 @xbot.on_callback_query()
 async def callbacks(bot: Client, updatex: CallbackQuery):
-    if updatex.message.reply_to_message.from_user is None:
-        return
     cb_data = updatex.data
     update = updatex.message.reply_to_message
     await updatex.message.delete()

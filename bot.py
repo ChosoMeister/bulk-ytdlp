@@ -163,6 +163,8 @@ if OWNER_ID:
 else:
     OWNER_FILTER = filters.incoming
 
+user_states = {}
+
 
 @xbot.on_message(filters.command('start') & OWNER_FILTER & filters.private)
 async def start(bot, update):
@@ -176,58 +178,64 @@ async def help(bot, update):
 
 @xbot.on_message(filters.command('link') & OWNER_FILTER & filters.private)
 async def linkloader(bot, update):
+    user_states[update.from_user.id] = 'awaiting_links'
     await update.reply_text('Send your links, separated each link by a new line')
-    xbot.add_handler(MessageHandler(handle_links, filters=filters.text & OWNER_FILTER & filters.private))
 
 
-async def handle_links(client, message):
-    xlink = message
-    if BUTTONS:
-        await xlink.reply('Uploading methods.', True, reply_markup=InlineKeyboardMarkup(CB_BUTTONS))
+@xbot.on_message(filters.text & OWNER_FILTER & filters.private)
+async def handle_links(bot, message):
+    user_id = message.from_user.id
+    if user_states.get(user_id) == 'awaiting_links':
+        user_states[user_id] = None  # Reset state
+        if BUTTONS:
+            await message.reply('Uploading methods.', True, reply_markup=InlineKeyboardMarkup(CB_BUTTONS))
+        else:
+            await process_links(message, message.text.split('\n'))
+
+
+async def process_links(update: Message, urlx):
+    dirs = f'downloads/{update.from_user.id}'
+    os.makedirs(dirs, exist_ok=True)
+    output_filename = str(update.from_user.id)
+    filename = f'{dirs}/{output_filename}.zip'
+    pablo = await update.reply_text('Downloading...')
+    rm, total, up = len(urlx), len(urlx), 0
+    await pablo.edit_text(f"Total: {total}\nDownloaded: {up}\nDownloading: {rm}")
+    for url in urlx:
+        await download_file(url, dirs)
+        up += 1
+        rm -= 1
+        try:
+            await pablo.edit_text(f"Total: {total}\nDownloaded: {up}\nDownloading: {rm}")
+        except BadRequest:
+            pass
+    await pablo.edit_text('Uploading...')
+    if AS_ZIP:
+        shutil.make_archive(output_filename, 'zip', dirs)
+        start_time = time.time()
+        await update.reply_document(
+            filename,
+            progress=progress_for_pyrogram,
+            progress_args=('Uploading...', pablo, start_time)
+        )
+        await pablo.delete()
+        os.remove(filename)
+        shutil.rmtree(dirs)
     else:
-        dirs = f'downloads/{message.from_user.id}'
-        os.makedirs(dirs, exist_ok=True)
-        output_filename = str(message.from_user.id)
-        filename = f'{dirs}/{output_filename}.zip'
-        pablo = await message.reply_text('Downloading...')
-        urlx = xlink.text.split('\n')
-        rm, total, up = len(urlx), len(urlx), 0
-        await pablo.edit_text(f"Total: {total}\nDownloaded: {up}\nDownloading: {rm}")
-        for url in urlx:
-            await download_file(url, dirs)
+        dldirs = [i async for i in absolute_paths(dirs)]
+        rm, total, up = len(dldirs), len(dldirs), 0
+        await pablo.edit_text(f"Total: {total}\nUploaded: {up}\nUploading: {rm}")
+        for files in dldirs:
+            await send_media(files, pablo)
             up += 1
             rm -= 1
             try:
-                await pablo.edit_text(f"Total: {total}\nDownloaded: {up}\nDownloading: {rm}")
+                await pablo.edit_text(f"Total: {total}\nUploaded: {up}\nUploading: {rm}")
             except BadRequest:
                 pass
-        await pablo.edit_text('Uploading...')
-        if AS_ZIP:
-            shutil.make_archive(output_filename, 'zip', dirs)
-            start_time = time.time()
-            await message.reply_document(
-                filename,
-                progress=progress_for_pyrogram,
-                progress_args=('Uploading...', pablo, start_time)
-            )
-            await pablo.delete()
-            os.remove(filename)
-            shutil.rmtree(dirs)
-        else:
-            dldirs = [i async for i in absolute_paths(dirs)]
-            rm, total, up = len(dldirs), len(dldirs), 0
-            await pablo.edit_text(f"Total: {total}\nUploaded: {up}\nUploading: {rm}")
-            for files in dldirs:
-                await send_media(files, pablo)
-                up += 1
-                rm -= 1
-                try:
-                    await pablo.edit_text(f"Total: {total}\nUploaded: {up}\nUploading: {rm}")
-                except BadRequest:
-                    pass
-                time.sleep(1)
-            await pablo.delete()
-            shutil.rmtree(dirs)
+            time.sleep(1)
+        await pablo.delete()
+        shutil.rmtree(dirs)
 
 
 @xbot.on_message(filters.document & OWNER_FILTER & filters.private)

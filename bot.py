@@ -176,15 +176,20 @@ async def help(bot, update):
 
 @xbot.on_message(filters.command('link') & OWNER_FILTER & filters.private)
 async def linkloader(bot, update):
-    xlink = await update.chat.ask('Send your links, separated each link by a new line', filters=filters.text, timeout=300)
+    await update.reply_text('Send your links, separated each link by a new line')
+    xbot.add_handler(MessageHandler(handle_links, filters=filters.text & OWNER_FILTER & filters.private))
+
+
+async def handle_links(client, message):
+    xlink = message
     if BUTTONS:
         await xlink.reply('Uploading methods.', True, reply_markup=InlineKeyboardMarkup(CB_BUTTONS))
     else:
-        dirs = f'downloads/{update.from_user.id}'
+        dirs = f'downloads/{message.from_user.id}'
         os.makedirs(dirs, exist_ok=True)
-        output_filename = str(update.from_user.id)
+        output_filename = str(message.from_user.id)
         filename = f'{dirs}/{output_filename}.zip'
-        pablo = await update.reply_text('Downloading...')
+        pablo = await message.reply_text('Downloading...')
         urlx = xlink.text.split('\n')
         rm, total, up = len(urlx), len(urlx), 0
         await pablo.edit_text(f"Total: {total}\nDownloaded: {up}\nDownloading: {rm}")
@@ -200,7 +205,7 @@ async def linkloader(bot, update):
         if AS_ZIP:
             shutil.make_archive(output_filename, 'zip', dirs)
             start_time = time.time()
-            await update.reply_document(
+            await message.reply_document(
                 filename,
                 progress=progress_for_pyrogram,
                 progress_args=('Uploading...', pablo, start_time)

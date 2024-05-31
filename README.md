@@ -47,7 +47,7 @@ Refresh User State
 
 Running Docker Server
 
-`docker run -d -e API_HASH=xxHASHIDxx -e APP_ID=xxAPPIDxx -e BOT_TOKEN="xxx:xxx" -e OWNER_ID=xxYOURIDxx -e AS_ZIP=false -e BUTTONS=true XXX:latest`
+`docker run -d -e API_HASH=xxHASHIDxx -e APP_ID=xxAPPIDxx -e BOT_TOKEN="xxx:xxx" -e OWNER_ID=xxYOURIDxx -e AS_ZIP=false -e BUTTONS=true ghcr.io/chosomeister/bulk-ytlp:latest`
 
 </details>
 

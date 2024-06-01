@@ -156,7 +156,7 @@ async def absolute_paths(directory):
 
 
 # Running bot
-xbot = Client('BulkLoader', api_id=APP_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
+xbot = Client('Bulk-ytdl', api_id=APP_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
 if OWNER_ID:
     OWNER_FILTER = filters.chat(int(OWNER_ID)) & filters.incoming

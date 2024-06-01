@@ -1,5 +1,9 @@
 ## Bulk-ytdlp (Bot)
-
+<p align="left">
+  <a href="https://skillicons.dev">
+    <img src="https://skillicons.dev/icons?i=docker,telegram" />
+  </a>
+</p>
 ---
 
 Telegram Bot to Bulk Downloading list of yt-dlp supported urls and Upload to Telegram.

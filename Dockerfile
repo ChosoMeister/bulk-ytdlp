@@ -1,4 +1,4 @@
-FROM chosomeister/python-phantomjs:3.9
+FROM ghcr.io/chosomeister/python-phantomjs:3.9
 
 COPY . /app/
 WORKDIR /app/

@@ -1,7 +1,7 @@
 ## Bulk-ytdlp (Bot)
 <p align="left">
   <a href="https://skillicons.dev">
-    <img src="https://skillicons.dev/icons?i=docker,telegram" />
+    <img src="https://skillicons.dev/icons?i=docker" />
   </a>
 </p>
 ---

@@ -45,8 +45,8 @@ CB_BUTTONS = [
 
 SITE_TYPE_BUTTONS = [
     [
-        InlineKeyboardButton("Public Site", callback_data="public_site"),
-        InlineKeyboardButton("Private Site", callback_data="private_site"),
+        InlineKeyboardButton("Public Site (e.g., YouTube, Instagram)", callback_data="public_site"),
+        InlineKeyboardButton("Private Site (e.g., LinkedIn Learning)", callback_data="private_site"),
     ]
 ]
 
@@ -207,7 +207,7 @@ async def handle_links(bot, message):
     if user_states.get(user_id) == 'awaiting_links':
         user_states[user_id] = 'awaiting_site_type'
         user_states[f'{user_id}_links'] = message.text.split('\n')
-        await message.reply('Is it a private site or a public site?', reply_markup=InlineKeyboardMarkup(SITE_TYPE_BUTTONS))
+        await message.reply('Is it a private site or a public site?\n\nPrivate sites: LinkedIn Learning, Lynda, Pluralsight, etc.\nPublic sites: YouTube, Instagram, VK, etc.', reply_markup=InlineKeyboardMarkup(SITE_TYPE_BUTTONS))
 
 
 @xbot.on_callback_query(filters.regex('public_site|private_site') & OWNER_FILTER)
@@ -234,21 +234,7 @@ async def handle_public_site(bot, message, links):
         user_states[message.from_user.id] = links
         await message.reply("How do you want to upload?", reply_markup=InlineKeyboardMarkup(CB_BUTTONS))
     else:
-        tempdir = f'temp/{str(message.from_user.id)}'
-        if not os.path.isdir(tempdir):
-            os.makedirs(tempdir)
-
-        for link in links:
-            await download_file(link, tempdir)
-
-        if AS_ZIP:
-            shutil.make_archive(tempdir, 'zip', tempdir)
-            await bot.send_document(message.chat.id, f'{tempdir}.zip', progress=progress_for_pyrogram)
-            os.remove(f'{tempdir}.zip')
-        else:
-            for file in await absolute_paths(tempdir):
-                await send_media(file, message)
-        shutil.rmtree(tempdir, ignore_errors=True)
+        await process_links(message, links)
 
 
 async def handle_private_site(bot, message, links, cookies_path):
@@ -256,21 +242,52 @@ async def handle_private_site(bot, message, links, cookies_path):
         user_states[message.from_user.id] = (links, cookies_path)
         await message.reply("How do you want to upload?", reply_markup=InlineKeyboardMarkup(CB_BUTTONS))
     else:
-        tempdir = f'temp/{str(message.from_user.id)}'
-        if not os.path.isdir(tempdir):
-            os.makedirs(tempdir)
+        await process_links(message, links, cookies_path)
 
-        for link in links:
-            await download_file(link, tempdir, cookies_path)
 
-        if AS_ZIP:
-            shutil.make_archive(tempdir, 'zip', tempdir)
-            await bot.send_document(message.chat.id, f'{tempdir}.zip', progress=progress_for_pyrogram)
-            os.remove(f'{tempdir}.zip')
-        else:
-            for file in await absolute_paths(tempdir):
-                await send_media(file, message)
-        shutil.rmtree(tempdir, ignore_errors=True)
+async def process_links(update: Message, urlx, cookies_path=None):
+    dirs = f'downloads/{update.from_user.id}'
+    os.makedirs(dirs, exist_ok=True)
+    output_filename = str(update.from_user.id)
+    filename = f'{dirs}/{output_filename}.zip'
+    pablo = await update.reply_text('Downloading...')
+    rm, total, up = len(urlx), len(urlx), 0
+    await pablo.edit_text(f"Total: {total}\nDownloaded: {up}\nDownloading: {rm}")
+    for url in urlx:
+        await download_file(url, dirs, cookies_path)
+        up += 1
+        rm -= 1
+        try:
+            await pablo.edit_text(f"Total: {total}\nDownloaded: {up}\nDownloading: {rm}")
+        except BadRequest:
+            pass
+    await pablo.edit_text('Uploading...')
+    if AS_ZIP:
+        shutil.make_archive(output_filename, 'zip', dirs)
+        start_time = time.time()
+        await update.reply_document(
+            filename,
+            progress=progress_for_pyrogram,
+            progress_args=('Uploading...', pablo, start_time)
+        )
+        await pablo.delete()
+        os.remove(filename)
+        shutil.rmtree(dirs)
+    else:
+        dldirs = [i async for i in absolute_paths(dirs)]
+        rm, total, up = len(dldirs), len(dldirs), 0
+        await pablo.edit_text(f"Total: {total}\nUploaded: {up}\nUploading: {rm}")
+        for files in dldirs:
+            await send_media(files, pablo)
+            up += 1
+            rm -= 1
+            try:
+                await pablo.edit_text(f"Total: {total}\nUploaded: {up}\nUploading: {rm}")
+            except BadRequest:
+                pass
+            time.sleep(1)
+        await pablo.delete()
+        shutil.rmtree(dirs)
 
 
 @xbot.on_callback_query(filters.regex("zip|1by1|mp3") & OWNER_FILTER)

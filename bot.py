@@ -36,7 +36,7 @@ START_BUTTONS = [
 
 CB_BUTTONS = [
     [
-        InlineKeyboardButton("Video", callback_data="1by1"),
+        InlineKeyboardButton("Video", callback_data="Video"),
         InlineKeyboardButton("MP3", callback_data="mp3"),
     ]
 ]
@@ -317,7 +317,7 @@ async def callbacks(bot: Client, updatex: CallbackQuery):
             except BadRequest:
                 pass
     await pablo.edit_text('Uploading...')
-    if cb_data == '1by1':
+    if cb_data == 'Video':
         dldirs = [i async for i in absolute_paths(dirs)]
         rm, total, up = len(dldirs), len(dldirs), 0
         await pablo.edit_text(f"Total: {total}\nUploaded: {up}\nUploading: {rm}")

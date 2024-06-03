@@ -72,30 +72,23 @@ async def progress_for_pyrogram(current, total, ud_type, message, start):
         except Exception as e:
             print(f"Error updating message: {e}")
 
-
 def humanbytes(size):
     if not size:
         return ""
     power = 2**10
     n = 0
-    Dic_powerN = {0: ' ', 1: 'Ki', 2: 'Mi', 3: 'Gi', 4: 'Ti'}
+    Dic_powerN = {0: '', 1: 'Ki', 2: 'Mi', 3: 'Gi', 4: 'Ti'}
     while size > power:
         size /= power
         n += 1
-    return str(round(size, 2)) + " " + Dic_powerN[n] + 'B'
-
+    return f"{round(size, 2)} {Dic_powerN[n]}B"
 
 def TimeFormatter(milliseconds: int) -> str:
     seconds, milliseconds = divmod(int(milliseconds), 1000)
     minutes, seconds = divmod(seconds, 60)
     hours, minutes = divmod(minutes, 60)
     days, hours = divmod(hours, 24)
-    return ((str(days) + "d, ") if days else "") + \
-           ((str(hours) + "h, ") if hours else "") + \
-           ((str(minutes) + "m, ") if minutes else "") + \
-           ((str(seconds) + "s, ") if seconds else "") + \
-           ((str(milliseconds) + "ms, ") if milliseconds else "")
-
+    return f"{days}d, {hours}h, {minutes}m, {seconds}s, {milliseconds}ms"
 
 async def run_cmd(cmd) -> Tuple[str, str, int, int]:
     if isinstance(cmd, str):
@@ -110,7 +103,6 @@ async def run_cmd(cmd) -> Tuple[str, str, int, int]:
         process.returncode,
         process.pid,
     )
-
 
 async def send_media(file_name: str, update: Message) -> bool:
     if os.path.isfile(file_name):
@@ -136,7 +128,6 @@ async def send_media(file_name: str, update: Message) -> bool:
             return False
     return False
 
-
 async def download_file(url, dl_path):
     command = [
         'yt-dlp',
@@ -147,46 +138,36 @@ async def download_file(url, dl_path):
     ]
     await run_cmd(command)
 
-
 async def download_and_convert_to_mp3(url, dl_path):
     video_file = f'{dl_path}/%(title)s.%(ext)s'
     mp3_file = f'{dl_path}/%(title)s.mp3'
     await run_cmd(['yt-dlp', '-f', 'bestaudio', '-x', '--audio-format', 'mp3', '-o', video_file, url])
     await run_cmd(['ffmpeg', '-i', video_file, '-vn', '-ab', '192k', mp3_file])
 
-
 async def absolute_paths(directory):
     for dirpath, _, filenames in os.walk(directory):
         for f in filenames:
             yield os.path.abspath(os.path.join(dirpath, f))
 
-
 # Running bot
 xbot = Client('Bulk-ytdl', api_id=APP_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
-if OWNER_ID:
-    OWNER_FILTER = filters.chat(int(OWNER_ID)) & filters.incoming
-else:
-    OWNER_FILTER = filters.incoming
+OWNER_FILTER = filters.chat(int(OWNER_ID)) & filters.incoming if OWNER_ID else filters.incoming
 
 user_states = {}
-
 
 @xbot.on_message(filters.command('start') & OWNER_FILTER & filters.private)
 async def start(bot, update):
     await update.reply_text("I'm Bulk-ytdlp\nYou can upload a list of URLs\n\n/help for more details!", True, reply_markup=InlineKeyboardMarkup(START_BUTTONS))
 
-
 @xbot.on_message(filters.command('help') & OWNER_FILTER & filters.private)
 async def help(bot, update):
     await update.reply_text("How to use Bulk-ytdlp?!\n\n2 Methods:\n- send command /link and then send URLs, separated by new line.\n- send txt file (links), separated by new line.", True, reply_markup=InlineKeyboardMarkup(START_BUTTONS))
-
 
 @xbot.on_message(filters.command('link') & OWNER_FILTER & filters.private)
 async def linkloader(bot, update):
     user_states[update.from_user.id] = 'awaiting_links'
     await update.reply_text('Send your links, separated each link by a new line')
-
 
 @xbot.on_message(filters.text & OWNER_FILTER & filters.private)
 async def handle_links(bot, message):
@@ -197,7 +178,6 @@ async def handle_links(bot, message):
             await message.reply('Uploading methods.', True, reply_markup=InlineKeyboardMarkup(CB_BUTTONS))
         else:
             await process_links(message, message.text.split('\n'))
-
 
 async def process_links(update: Message, urlx):
     dirs = f'downloads/{update.from_user.id}'
@@ -228,7 +208,6 @@ async def process_links(update: Message, urlx):
         time.sleep(1)
     await pablo.delete()
     shutil.rmtree(dirs)
-
 
 @xbot.on_message(filters.document & OWNER_FILTER & filters.private)
 async def loader(bot, update):
@@ -270,7 +249,6 @@ async def loader(bot, update):
             time.sleep(1)
         await pablo.delete()
         shutil.rmtree(dirs)
-
 
 @xbot.on_callback_query()
 async def callbacks(bot: Client, updatex: CallbackQuery):

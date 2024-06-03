@@ -38,7 +38,8 @@ START_BUTTONS = [
 CB_BUTTONS = [
     [
         InlineKeyboardButton("Zip", callback_data="zip"),
-        InlineKeyboardButton("One by one", callback_data="1by1"),
+        InlineKeyboardButton("Video", callback_data="1by1"),
+        InlineKeyboardButton("MP3", callback_data="mp3"),
     ]
 ]
 
@@ -147,6 +148,13 @@ async def download_file(url, dl_path):
         url
     ]
     await run_cmd(command)
+
+
+async def download_and_convert_to_mp3(url, dl_path):
+    video_file = f'{dl_path}/%(title)s.%(ext)s'
+    mp3_file = f'{dl_path}/%(title)s.mp3'
+    await run_cmd(['yt-dlp', '-f', 'bestaudio', '-x', '--audio-format', 'mp3', '-o', video_file, url])
+    await run_cmd(['ffmpeg', '-i', video_file, '-vn', '-ab', '192k', mp3_file])
 
 
 async def absolute_paths(directory):
@@ -310,7 +318,10 @@ async def callbacks(bot: Client, updatex: CallbackQuery):
             rm, total, up = len(urls), len(urls), 0
             await pablo.edit_text(f"Total: {total}\nDownloaded: {up}\nDownloading: {rm}")
             for url in urls:
-                await download_file(url, dirs)
+                if cb_data == 'mp3':
+                    await download_and_convert_to_mp3(url, dirs)
+                else:
+                    await download_file(url, dirs)
                 up += 1
                 rm -= 1
                 try:
@@ -326,7 +337,10 @@ async def callbacks(bot: Client, updatex: CallbackQuery):
         rm, total, up = len(urlx), len(urlx), 0
         await pablo.edit_text(f"Total: {total}\nDownloaded: {up}\nDownloading: {rm}")
         for url in urlx:
-            await download_file(url, dirs)
+            if cb_data == 'mp3':
+                await download_and_convert_to_mp3(url, dirs)
+            else:
+                await download_file(url, dirs)
             up += 1
             rm -= 1
             try:
@@ -351,6 +365,21 @@ async def callbacks(bot: Client, updatex: CallbackQuery):
         await pablo.edit_text(f"Total: {total}\nUploaded: {up}\nUploading: {rm}")
         for files in dldirs:
             await send_media(files, pablo)
+            up += 1
+            rm -= 1
+            try:
+                await pablo.edit_text(f"Total: {total}\nUploaded: {up}\nUploading: {rm}")
+            except BadRequest:
+                pass
+            time.sleep(1)
+        await pablo.delete()
+        shutil.rmtree(dirs)
+    elif cb_data == 'mp3':
+        mp3_files = [f for f in os.listdir(dirs) if f.endswith('.mp3')]
+        rm, total, up = len(mp3_files), len(mp3_files), 0
+        await pablo.edit_text(f"Total: {total}\nUploaded: {up}\nUploading: {rm}")
+        for mp3_file in mp3_files:
+            await send_media(os.path.join(dirs, mp3_file), pablo)
             up += 1
             rm -= 1
             try:

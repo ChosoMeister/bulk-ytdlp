@@ -43,13 +43,6 @@ CB_BUTTONS = [
     ]
 ]
 
-SITE_TYPE_BUTTONS = [
-    [
-        InlineKeyboardButton("Public Site (e.g., YouTube, Instagram)", callback_data="public_site"),
-        InlineKeyboardButton("Private Site (e.g., LinkedIn Learning)", callback_data="private_site"),
-    ]
-]
-
 # Helpers
 
 async def progress_for_pyrogram(current, total, ud_type, message, start):
@@ -146,7 +139,7 @@ async def send_media(file_name: str, update: Message) -> bool:
     return False
 
 
-async def download_file(url, dl_path, cookies=None):
+async def download_file(url, dl_path):
     command = [
         'yt-dlp',
         '-f', 'best',
@@ -154,18 +147,14 @@ async def download_file(url, dl_path, cookies=None):
         '-o', f'{dl_path}/%(title)s.%(ext)s',
         url
     ]
-    if cookies:
-        command.extend(['--cookies', cookies])
     await run_cmd(command)
 
 
-async def download_and_convert_to_mp3(url, dl_path, cookies=None):
+async def download_and_convert_to_mp3(url, dl_path):
     video_file = f'{dl_path}/%(title)s.%(ext)s'
     mp3_file = f'{dl_path}/%(title)s.mp3'
-    command = ['yt-dlp', '-f', 'bestaudio', '-x', '--audio-format', 'mp3', '-o', video_file, url]
-    if cookies:
-        command.extend(['--cookies', cookies])
-    await run_cmd(command)
+    await run_cmd(['yt-dlp', '-f', 'bestaudio', '-x', '--audio-format', 'mp3', '-o', video_file, url])
+    await run_cmd(['ffmpeg', '-i', video_file, '-vn', '-ab', '192k', mp3_file])
 
 
 async def absolute_paths(directory):
@@ -205,47 +194,14 @@ async def linkloader(bot, update):
 async def handle_links(bot, message):
     user_id = message.from_user.id
     if user_states.get(user_id) == 'awaiting_links':
-        user_states[user_id] = 'awaiting_site_type'
-        user_states[f'{user_id}_links'] = message.text.split('\n')
-        await message.reply('Is it a private site or a public site?\n\nPrivate sites: LinkedIn Learning, Lynda, Pluralsight, etc.\nPublic sites: YouTube, Instagram, VK, etc.', reply_markup=InlineKeyboardMarkup(SITE_TYPE_BUTTONS))
+        user_states[user_id] = None  # Reset state
+        if BUTTONS:
+            await message.reply('Uploading methods.', True, reply_markup=InlineKeyboardMarkup(CB_BUTTONS))
+        else:
+            await process_links(message, message.text.split('\n'))
 
 
-@xbot.on_callback_query(filters.regex('public_site|private_site') & OWNER_FILTER)
-async def handle_site_type(bot, callback_query: CallbackQuery):
-    user_id = callback_query.from_user.id
-    site_type = callback_query.data
-    if site_type == 'public_site':
-        await handle_public_site(bot, callback_query.message, user_states.get(f'{user_id}_links'))
-    elif site_type == 'private_site':
-        user_states[user_id] = 'awaiting_cookies'
-        await callback_query.message.reply('Please send your cookies.txt file.')
-
-
-@xbot.on_message(filters.document & OWNER_FILTER & filters.private)
-async def handle_document(bot, message):
-    user_id = message.from_user.id
-    if user_states.get(user_id) == 'awaiting_cookies':
-        file_path = await message.download()
-        await handle_private_site(bot, message, user_states.get(f'{user_id}_links'), file_path)
-
-
-async def handle_public_site(bot, message, links):
-    if BUTTONS:
-        user_states[message.from_user.id] = links
-        await message.reply("How do you want to upload?", reply_markup=InlineKeyboardMarkup(CB_BUTTONS))
-    else:
-        await process_links(message, links)
-
-
-async def handle_private_site(bot, message, links, cookies_path):
-    if BUTTONS:
-        user_states[message.from_user.id] = (links, cookies_path)
-        await message.reply("How do you want to upload?", reply_markup=InlineKeyboardMarkup(CB_BUTTONS))
-    else:
-        await process_links(message, links, cookies_path)
-
-
-async def process_links(update: Message, urlx, cookies_path=None):
+async def process_links(update: Message, urlx):
     dirs = f'downloads/{update.from_user.id}'
     os.makedirs(dirs, exist_ok=True)
     output_filename = str(update.from_user.id)
@@ -254,7 +210,7 @@ async def process_links(update: Message, urlx, cookies_path=None):
     rm, total, up = len(urlx), len(urlx), 0
     await pablo.edit_text(f"Total: {total}\nDownloaded: {up}\nDownloading: {rm}")
     for url in urlx:
-        await download_file(url, dirs, cookies_path)
+        await download_file(url, dirs)
         up += 1
         rm -= 1
         try:
@@ -290,65 +246,148 @@ async def process_links(update: Message, urlx, cookies_path=None):
         shutil.rmtree(dirs)
 
 
-@xbot.on_callback_query(filters.regex("zip|1by1|mp3") & OWNER_FILTER)
-async def handle_button(bot, update: CallbackQuery):
-    query = update.data
-    user_id = update.from_user.id
-    user_data = user_states.get(user_id)
-
-    if query == 'zip':
-        tempdir = f'temp/{str(user_id)}'
-        if not os.path.isdir(tempdir):
-            os.makedirs(tempdir)
-        if isinstance(user_data, tuple):
-            links, cookies_path = user_data
-            for link in links:
-                await download_file(link, tempdir, cookies_path)
-        else:
-            links = user_data
-            for link in links:
-                await download_file(link, tempdir)
-        shutil.make_archive(tempdir, 'zip', tempdir)
-        await update.message.reply_document(f'{tempdir}.zip', progress=progress_for_pyrogram)
-        os.remove(f'{tempdir}.zip')
-        shutil.rmtree(tempdir, ignore_errors=True)
-
-    elif query == '1by1':
-        tempdir = f'temp/{str(user_id)}'
-        if not os.path.isdir(tempdir):
-            os.makedirs(tempdir)
-        if isinstance(user_data, tuple):
-            links, cookies_path = user_data
-            for link in links:
-                await download_file(link, tempdir, cookies_path)
-        else:
-            links = user_data
-            for link in links:
-                await download_file(link, tempdir)
-        for file in await absolute_paths(tempdir):
-            await send_media(file, update.message)
-        shutil.rmtree(tempdir, ignore_errors=True)
-
-    elif query == 'mp3':
-        tempdir = f'temp/{str(user_id)}'
-        if not os.path.isdir(tempdir):
-            os.makedirs(tempdir)
-        if isinstance(user_data, tuple):
-            links, cookies_path = user_data
-            for link in links:
-                await download_and_convert_to_mp3(link, tempdir, cookies_path)
-        else:
-            links = user_data
-            for link in links:
-                await download_and_convert_to_mp3(link, tempdir)
+@xbot.on_message(filters.document & OWNER_FILTER & filters.private)
+async def loader(bot, update):
+    if BUTTONS:
+        await update.reply('You wanna upload files as?', True, reply_markup=InlineKeyboardMarkup(CB_BUTTONS))
+    else:
+        dirs = f'downloads/{update.from_user.id}'
+        os.makedirs(dirs, exist_ok=True)
+        if not update.document.file_name.endswith('.txt'):
+            return
+        output_filename = update.document.file_name[:-4]
+        filename = f'{dirs}/{output_filename}.zip'
+        pablo = await update.reply_text('Downloading...')
+        fl = await update.download()
+        with open(fl) as f:
+            urls = f.read().split('\n')
+            rm, total, up = len(urls), len(urls), 0
+            await pablo.edit_text(f"Total: {total}\nDownloaded: {up}\nDownloading: {rm}")
+            for url in urls:
+                await download_file(url, dirs)
+                up += 1
+                rm -= 1
+                try:
+                    await pablo.edit_text(f"Total: {total}\nDownloaded: {up}\nDownloading: {rm}")
+                except BadRequest:
+                    pass
+        await pablo.edit_text('Uploading...')
+        os.remove(fl)
         if AS_ZIP:
-            shutil.make_archive(tempdir, 'zip', tempdir)
-            await update.message.reply_document(f'{tempdir}.zip', progress=progress_for_pyrogram)
-            os.remove(f'{tempdir}.zip')
+            shutil.make_archive(output_filename, 'zip', dirs)
+            start_time = time.time()
+            await update.reply_document(
+                filename,
+                progress=progress_for_pyrogram,
+                progress_args=('Uploading...', pablo, start_time)
+            )
+            await pablo.delete()
+            os.remove(filename)
+            shutil.rmtree(dirs)
         else:
-            for file in await absolute_paths(tempdir):
-                await send_media(file, update.message)
-        shutil.rmtree(tempdir, ignore_errors=True)
+            dldirs = [i async for i in absolute_paths(dirs)]
+            rm, total, up = len(dldirs), len(dldirs), 0
+            await pablo.edit_text(f"Total: {total}\nUploaded: {up}\nUploading: {rm}")
+            for files in dldirs:
+                await send_media(files, pablo)
+                up += 1
+                rm -= 1
+                try:
+                    await pablo.edit_text(f"Total: {total}\nUploaded: {up}\nUploading: {rm}")
+                except BadRequest:
+                    pass
+                time.sleep(1)
+            await pablo.delete()
+            shutil.rmtree(dirs)
 
+
+@xbot.on_callback_query()
+async def callbacks(bot: Client, updatex: CallbackQuery):
+    cb_data = updatex.data
+    update = updatex.message.reply_to_message
+    await updatex.message.delete()
+    dirs = f'downloads/{update.from_user.id}'
+    os.makedirs(dirs, exist_ok=True)
+    if update.document:
+        output_filename = update.document.file_name[:-4]
+        filename = f'{dirs}/{output_filename}.zip'
+        pablo = await update.reply_text('Downloading...')
+        fl = await update.download()
+        with open(fl) as f:
+            urls = f.read().split('\n')
+            rm, total, up = len(urls), len(urls), 0
+            await pablo.edit_text(f"Total: {total}\nDownloaded: {up}\nDownloading: {rm}")
+            for url in urls:
+                if cb_data == 'mp3':
+                    await download_and_convert_to_mp3(url, dirs)
+                else:
+                    await download_file(url, dirs)
+                up += 1
+                rm -= 1
+                try:
+                    await pablo.edit_text(f"Total: {total}\nDownloaded: {up}\nDownloading: {rm}")
+                except BadRequest:
+                    pass
+        os.remove(fl)
+    elif update.text:
+        output_filename = str(update.from_user.id)
+        filename = f'{dirs}/{output_filename}.zip'
+        pablo = await update.reply_text('Downloading...')
+        urlx = update.text.split('\n')
+        rm, total, up = len(urlx), len(urlx), 0
+        await pablo.edit_text(f"Total: {total}\nDownloaded: {up}\nDownloading: {rm}")
+        for url in urlx:
+            if cb_data == 'mp3':
+                await download_and_convert_to_mp3(url, dirs)
+            else:
+                await download_file(url, dirs)
+            up += 1
+            rm -= 1
+            try:
+                await pablo.edit_text(f"Total: {total}\nDownloaded: {up}\nDownloading: {rm}")
+            except BadRequest:
+                pass
+    await pablo.edit_text('Uploading...')
+    if cb_data == 'zip':
+        shutil.make_archive(output_filename, 'zip', dirs)
+        start_time = time.time()
+        await update.reply_document(
+            filename,
+            progress=progress_for_pyrogram,
+            progress_args=('Uploading...', pablo, start_time)
+        )
+        await pablo.delete()
+        os.remove(filename)
+        shutil.rmtree(dirs)
+    elif cb_data == '1by1':
+        dldirs = [i async for i in absolute_paths(dirs)]
+        rm, total, up = len(dldirs), len(dldirs), 0
+        await pablo.edit_text(f"Total: {total}\nUploaded: {up}\nUploading: {rm}")
+        for files in dldirs:
+            await send_media(files, pablo)
+            up += 1
+            rm -= 1
+            try:
+                await pablo.edit_text(f"Total: {total}\nUploaded: {up}\nUploading: {rm}")
+            except BadRequest:
+                pass
+            time.sleep(1)
+        await pablo.delete()
+        shutil.rmtree(dirs)
+    elif cb_data == 'mp3':
+        mp3_files = [f for f in os.listdir(dirs) if f.endswith('.mp3')]
+        rm, total, up = len(mp3_files), len(mp3_files), 0
+        await pablo.edit_text(f"Total: {total}\nUploaded: {up}\nUploading: {rm}")
+        for mp3_file in mp3_files:
+            await send_media(os.path.join(dirs, mp3_file), pablo)
+            up += 1
+            rm -= 1
+            try:
+                await pablo.edit_text(f"Total: {total}\nUploaded: {up}\nUploading: {rm}")
+            except BadRequest:
+                pass
+            time.sleep(1)
+        await pablo.delete()
+        shutil.rmtree(dirs)
 
 xbot.run()

@@ -38,7 +38,7 @@ START_BUTTONS = [
 CB_BUTTONS = [
     [
         InlineKeyboardButton("Zip", callback_data="zip"),
-        InlineKeyboardButton("One by one", callback_data="1by1"),
+        InlineKeyboardButton("Video", callback_data="1by1"),
         InlineKeyboardButton("MP3", callback_data="mp3"),
     ]
 ]

@@ -236,7 +236,10 @@ async def loader(bot, update):
 async def callbacks(bot: Client, updatex: CallbackQuery):
     cb_data = updatex.data
     user_id = updatex.from_user.id
-    update = updatex.message.reply_to_message
+
+    # Handle None case
+    update = updatex.message.reply_to_message if updatex.message else None
+
     dirs = f'downloads/{user_id}'
     os.makedirs(dirs, exist_ok=True)
 
@@ -246,12 +249,22 @@ async def callbacks(bot: Client, updatex: CallbackQuery):
         for url in urls:
             await download_queue.put((url, cb_data))
         position = download_queue.qsize() + 1
-        await update.reply_text(f'You are in queue number {position}. Please wait...')
-        await process_download_queue(download_queue, update, dirs)
-        async for file_path in absolute_paths(dirs):
-            await upload_queue.put(file_path)
-        await process_upload_queue(upload_queue, update, dirs)
+        if update:
+            await update.reply_text(f'You are in queue number {position}. Please wait...')
+            await process_download_queue(download_queue, update, dirs)
+            async for file_path in absolute_paths(dirs):
+                await upload_queue.put(file_path)
+            await process_upload_queue(upload_queue, update, dirs)
+        else:
+            await updatex.message.edit_text(f'You are in queue number {position}. Please wait...')
+            await process_download_queue(download_queue, updatex.message, dirs)
+            async for file_path in absolute_paths(dirs):
+                await upload_queue.put(file_path)
+            await process_upload_queue(upload_queue, updatex.message, dirs)
     else:
-        await update.reply_text('Invalid state. Please send /link again and follow the instructions.')
+        if update:
+            await update.reply_text('Invalid state. Please send /link again and follow the instructions.')
+        else:
+            await updatex.message.edit_text('Invalid state. Please send /link again and follow the instructions.')
 
 xbot.run()

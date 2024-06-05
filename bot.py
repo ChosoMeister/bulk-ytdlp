@@ -155,37 +155,6 @@ xbot = Client('Bulk-ytdl', api_id=APP_ID, api_hash=API_HASH, bot_token=BOT_TOKEN
 OWNER_FILTER = filters.chat(int(OWNER_ID)) & filters.incoming if OWNER_ID else filters.incoming
 
 user_states = {}
-download_queue = asyncio.Queue()
-upload_queue = asyncio.Queue()
-
-async def process_download_queue(queue, update, dirs):
-    pablo = await update.reply_text('Downloading...')
-    while not queue.empty():
-        item = await queue.get()
-        if isinstance(item, tuple):
-            url, format_type = item
-            if format_type == 'mp3':
-                await download_and_convert_to_mp3(url, dirs)
-            else:
-                await download_file(url, dirs)
-        else:
-            url = item
-            await download_file(url, dirs)
-        queue.task_done()
-        total = queue.qsize()
-        await pablo.edit_text(f"Remaining: {total}")
-    await pablo.edit_text('Download completed.')
-
-async def process_upload_queue(queue, update, dirs):
-    pablo = await update.reply_text('Uploading...')
-    while not queue.empty():
-        file_path = await queue.get()
-        await send_media(file_path, update)
-        queue.task_done()
-        total = queue.qsize()
-        await pablo.edit_text(f"Remaining: {total}")
-    await pablo.delete()
-    shutil.rmtree(dirs)
 
 @xbot.on_message(filters.command('start') & OWNER_FILTER & filters.private)
 async def start(bot, update):
@@ -204,9 +173,41 @@ async def linkloader(bot, update):
 async def handle_links(bot, message):
     user_id = message.from_user.id
     if user_states.get(user_id) == 'awaiting_links':
-        user_states[user_id] = 'awaiting_format'
-        user_states['urls'] = message.text.split('\n')
-        await message.reply_text('Choose the format you want to download:', reply_markup=InlineKeyboardMarkup(CB_BUTTONS))
+        user_states[user_id] = None  # Reset state
+        if BUTTONS:
+            await message.reply('Uploading methods.', True, reply_markup=InlineKeyboardMarkup(CB_BUTTONS))
+        else:
+            await process_links(message, message.text.split('\n'))
+
+async def process_links(update: Message, urlx):
+    dirs = f'downloads/{update.from_user.id}'
+    os.makedirs(dirs, exist_ok=True)
+    pablo = await update.reply_text('Downloading...')
+    rm, total, up = len(urlx), len(urlx), 0
+    await pablo.edit_text(f"Total: {total}\nDownloaded: {up}\nDownloading: {rm}")
+    for url in urlx:
+        await download_file(url, dirs)
+        up += 1
+        rm -= 1
+        try:
+            await pablo.edit_text(f"Total: {total}\nDownloaded: {up}\nDownloading: {rm}")
+        except BadRequest:
+            pass
+    await pablo.edit_text('Uploading...')
+    dldirs = [i async for i in absolute_paths(dirs)]
+    rm, total, up = len(dldirs), len(dldirs), 0
+    await pablo.edit_text(f"Total: {total}\nUploaded: {up}\nUploading: {rm}")
+    for files in dldirs:
+        await send_media(files, pablo)
+        up += 1
+        rm -= 1
+        try:
+            await pablo.edit_text(f"Total: {total}\nUploaded: {up}\nUploading: {rm}")
+        except BadRequest:
+            pass
+        time.sleep(1)
+    await pablo.delete()
+    shutil.rmtree(dirs)
 
 @xbot.on_message(filters.document & OWNER_FILTER & filters.private)
 async def loader(bot, update):
@@ -218,53 +219,111 @@ async def loader(bot, update):
         if not update.document.file_name.endswith('.txt'):
             return
         output_filename = update.document.file_name[:-4]
-        position = download_queue.qsize() + 1
-        await update.reply_text(f'You are in queue number {position}. Please wait...')
         pablo = await update.reply_text('Downloading...')
         fl = await update.download()
         with open(fl) as f:
             urls = f.read().split('\n')
+            rm, total, up = len(urls), len(urls), 0
+            await pablo.edit_text(f"Total: {total}\nDownloaded: {up}\nDownloading: {rm}")
             for url in urls:
-                await download_queue.put(url)
-            await process_download_queue(download_queue, update, dirs)
+                await download_file(url, dirs)
+                up += 1
+                rm -= 1
+                try:
+                    await pablo.edit_text(f"Total: {total}\nDownloaded: {up}\nDownloading: {rm}")
+                except BadRequest:
+                    pass
+        await pablo.edit_text('Uploading...')
         os.remove(fl)
-        async for file_path in absolute_paths(dirs):
-            await upload_queue.put(file_path)
-        await process_upload_queue(upload_queue, update, dirs)
+        dldirs = [i async for i in absolute_paths(dirs)]
+        rm, total, up = len(dldirs), len(dldirs), 0
+        await pablo.edit_text(f"Total: {total}\nUploaded: {up}\nUploading: {rm}")
+        for files in dldirs:
+            await send_media(files, pablo)
+            up += 1
+            rm -= 1
+            try:
+                await pablo.edit_text(f"Total: {total}\nUploaded: {up}\nUploading: {rm}")
+            except BadRequest:
+                pass
+            time.sleep(1)
+        await pablo.delete()
+        shutil.rmtree(dirs)
 
 @xbot.on_callback_query()
 async def callbacks(bot: Client, updatex: CallbackQuery):
     cb_data = updatex.data
-    user_id = updatex.from_user.id
-
-    # Handle None case
-    update = updatex.message.reply_to_message if updatex.message else None
-
-    dirs = f'downloads/{user_id}'
+    update = updatex.message.reply_to_message
+    await updatex.message.delete()
+    dirs = f'downloads/{update.from_user.id}'
     os.makedirs(dirs, exist_ok=True)
-
-    if user_states.get(user_id) == 'awaiting_format':
-        user_states[user_id] = None
-        urls = user_states.pop('urls', [])
-        for url in urls:
-            await download_queue.put((url, cb_data))
-        position = download_queue.qsize() + 1
-        if update:
-            await update.reply_text(f'You are in queue number {position}. Please wait...')
-            await process_download_queue(download_queue, update, dirs)
-            async for file_path in absolute_paths(dirs):
-                await upload_queue.put(file_path)
-            await process_upload_queue(upload_queue, update, dirs)
-        else:
-            await updatex.message.edit_text(f'You are in queue number {position}. Please wait...')
-            await process_download_queue(download_queue, updatex.message, dirs)
-            async for file_path in absolute_paths(dirs):
-                await upload_queue.put(file_path)
-            await process_upload_queue(upload_queue, updatex.message, dirs)
-    else:
-        if update:
-            await update.reply_text('Invalid state. Please send /link again and follow the instructions.')
-        else:
-            await updatex.message.edit_text('Invalid state. Please send /link again and follow the instructions.')
+    if update.document:
+        output_filename = update.document.file_name[:-4]
+        pablo = await update.reply_text('Downloading...')
+        fl = await update.download()
+        with open(fl) as f:
+            urls = f.read().split('\n')
+            rm, total, up = len(urls), len(urls), 0
+            await pablo.edit_text(f"Total: {total}\nDownloaded: {up}\nDownloading: {rm}")
+            for url in urls:
+                if cb_data == 'mp3':
+                    await download_and_convert_to_mp3(url, dirs)
+                else:
+                    await download_file(url, dirs)
+                up += 1
+                rm -= 1
+                try:
+                    await pablo.edit_text(f"Total: {total}\nDownloaded: {up}\nDownloading: {rm}")
+                except BadRequest:
+                    pass
+        os.remove(fl)
+    elif update.text:
+        output_filename = str(update.from_user.id)
+        pablo = await update.reply_text('Downloading...')
+        urlx = update.text.split('\n')
+        rm, total, up = len(urlx), len(urlx), 0
+        await pablo.edit_text(f"Total: {total}\nDownloaded: {up}\nDownloading: {rm}")
+        for url in urlx:
+            if cb_data == 'mp3':
+                await download_and_convert_to_mp3(url, dirs)
+            else:
+                await download_file(url, dirs)
+            up += 1
+            rm -= 1
+            try:
+                await pablo.edit_text(f"Total: {total}\nDownloaded: {up}\nDownloading: {rm}")
+            except BadRequest:
+                pass
+    await pablo.edit_text('Uploading...')
+    if cb_data == 'Video':
+        dldirs = [i async for i in absolute_paths(dirs)]
+        rm, total, up = len(dldirs), len(dldirs), 0
+        await pablo.edit_text(f"Total: {total}\nUploaded: {up}\nUploading: {rm}")
+        for files in dldirs:
+            await send_media(files, pablo)
+            up += 1
+            rm -= 1
+            try:
+                await pablo.edit_text(f"Total: {total}\nUploaded: {up}\nUploading: {rm}")
+            except BadRequest:
+                pass
+            time.sleep(1)
+        await pablo.delete()
+        shutil.rmtree(dirs)
+    elif cb_data == 'mp3':
+        mp3_files = [f for f in os.listdir(dirs) if f.endswith('.mp3')]
+        rm, total, up = len(mp3_files), len(mp3_files), 0
+        await pablo.edit_text(f"Total: {total}\nUploaded: {up}\nUploading: {rm}")
+        for mp3_file in mp3_files:
+            await send_media(os.path.join(dirs, mp3_file), pablo)
+            up += 1
+            rm -= 1
+            try:
+                await pablo.edit_text(f"Total: {total}\nUploaded: {up}\nUploading: {rm}")
+            except BadRequest:
+                pass
+            time.sleep(1)
+        await pablo.delete()
+        shutil.rmtree(dirs)
 
 xbot.run()

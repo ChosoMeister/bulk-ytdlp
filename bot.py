@@ -116,7 +116,6 @@ async def send_media(file_name: str, update: Message) -> bool:
                 await run_cmd(f'ffmpeg -ss {rndmtime} -i "{file_name}" -vframes 1 thumbnail.jpg')
                 await update.reply_video(file_name, caption=caption, duration=duration, thumb='thumbnail.jpg', progress=progress_for_pyrogram, progress_args=progress_args)
                 os.remove('thumbnail.jpg')
-            elif file_name.lower().endswith(('.jpg', '.jpeg', '.png')):
                 await update.reply_photo(file_name, caption=caption, progress=progress_for_pyrogram, progress_args=progress_args)
             elif file_name.lower().endswith('.mp3'):
                 await update.reply_audio(file_name, caption=caption, progress=progress_for_pyrogram, progress_args=progress_args)
@@ -204,19 +203,9 @@ async def linkloader(bot, update):
 async def handle_links(bot, message):
     user_id = message.from_user.id
     if user_states.get(user_id) == 'awaiting_links':
-        user_states[user_id] = None  # Clear the state
-        dirs = f'downloads/{user_id}'
-        os.makedirs(dirs, exist_ok=True)
-        output_filename = str(user_id)
-        urls = message.text.split('\n')
-        for url in urls:
-            await download_queue.put(url)
-        position = download_queue.qsize()
-        await message.reply_text(f'You are in queue number {position}. Please wait...')
-        await process_download_queue(download_queue, message, dirs)
-        for file_path in await absolute_paths(dirs):
-            await upload_queue.put(file_path)
-        await process_upload_queue(upload_queue, message, dirs)
+        user_states[user_id] = 'awaiting_format'
+        user_states['urls'] = message.text.split('\n')
+        await message.reply_text('Choose the format you want to download:', reply_markup=InlineKeyboardMarkup(CB_BUTTONS))
 
 @xbot.on_message(filters.document & OWNER_FILTER & filters.private)
 async def loader(bot, update):
@@ -238,7 +227,7 @@ async def loader(bot, update):
                 await download_queue.put(url)
             await process_download_queue(download_queue, update, dirs)
         os.remove(fl)
-        for file_path in await absolute_paths(dirs):
+        async for file_path in absolute_paths(dirs):
             await upload_queue.put(file_path)
         await process_upload_queue(upload_queue, update, dirs)
 
@@ -246,38 +235,22 @@ async def loader(bot, update):
 async def callbacks(bot: Client, updatex: CallbackQuery):
     cb_data = updatex.data
     update = updatex.message.reply_to_message
-    await updatex.message.delete()
+    user_id = update.from_user.id
     dirs = f'downloads/{update.from_user.id}'
     os.makedirs(dirs, exist_ok=True)
-    if update.document:
-        output_filename = update.document.file_name[:-4]
+
+    if user_states.get(user_id) == 'awaiting_format':
+        user_states[user_id] = None
+        urls = user_states.pop('urls', [])
+        for url in urls:
+            await download_queue.put((url, cb_data))
         position = download_queue.qsize() + 1
         await update.reply_text(f'You are in queue number {position}. Please wait...')
-        pablo = await update.reply_text('Downloading...')
-        fl = await update.download()
-        with open(fl) as f:
-            urls = f.read().split('\n')
-            for url in urls:
-                if cb_data == 'mp3':
-                    await download_queue.put((url, 'mp3'))
-                else:
-                    await download_queue.put((url, 'video'))
-            await process_download_queue(download_queue, update, dirs)
-        os.remove(fl)
-    elif update.text:
-        output_filename = str(update.from_user.id)
-        position = download_queue.qsize() + 1
-        await update.reply_text(f'You are in queue number {position}. Please wait...')
-        pablo = await update.reply_text('Downloading...')
-        urlx = update.text.split('\n')
-        for url in urlx:
-            if cb_data == 'mp3':
-                await download_queue.put((url, 'mp3'))
-            else:
-                await download_queue.put((url, 'video'))
         await process_download_queue(download_queue, update, dirs)
-    for file_path in await absolute_paths(dirs):
-        await upload_queue.put(file_path)
-    await process_upload_queue(upload_queue, update, dirs)
+        async for file_path in absolute_paths(dirs):
+            await upload_queue.put(file_path)
+        await process_upload_queue(upload_queue, update, dirs)
+    else:
+        await update.reply_text('Invalid state. Please send /link again and follow the instructions.')
 
 xbot.run()

@@ -3,3 +3,4 @@ loadenv.sh
 loadenv.bat
 get-pip.py
 .DS_Store
+.env

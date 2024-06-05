@@ -116,6 +116,7 @@ async def send_media(file_name: str, update: Message) -> bool:
                 await run_cmd(f'ffmpeg -ss {rndmtime} -i "{file_name}" -vframes 1 thumbnail.jpg')
                 await update.reply_video(file_name, caption=caption, duration=duration, thumb='thumbnail.jpg', progress=progress_for_pyrogram, progress_args=progress_args)
                 os.remove('thumbnail.jpg')
+            elif file_name.lower().endswith(('.jpg', '.jpeg', '.png')):
                 await update.reply_photo(file_name, caption=caption, progress=progress_for_pyrogram, progress_args=progress_args)
             elif file_name.lower().endswith('.mp3'):
                 await update.reply_audio(file_name, caption=caption, progress=progress_for_pyrogram, progress_args=progress_args)
@@ -234,23 +235,26 @@ async def loader(bot, update):
 @xbot.on_callback_query()
 async def callbacks(bot: Client, updatex: CallbackQuery):
     cb_data = updatex.data
-    update = updatex.message.reply_to_message
-    user_id = update.from_user.id
-    dirs = f'downloads/{update.from_user.id}'
-    os.makedirs(dirs, exist_ok=True)
+    update = updatex.message
+    user_id = update.reply_to_message.from_user.id if update.reply_to_message else None
+    if user_id:
+        dirs = f'downloads/{user_id}'
+        os.makedirs(dirs, exist_ok=True)
 
-    if user_states.get(user_id) == 'awaiting_format':
-        user_states[user_id] = None
-        urls = user_states.pop('urls', [])
-        for url in urls:
-            await download_queue.put((url, cb_data))
-        position = download_queue.qsize() + 1
-        await update.reply_text(f'You are in queue number {position}. Please wait...')
-        await process_download_queue(download_queue, update, dirs)
-        async for file_path in absolute_paths(dirs):
-            await upload_queue.put(file_path)
-        await process_upload_queue(upload_queue, update, dirs)
+        if user_states.get(user_id) == 'awaiting_format':
+            user_states[user_id] = None
+            urls = user_states.pop('urls', [])
+            for url in urls:
+                await download_queue.put((url, cb_data))
+            position = download_queue.qsize() + 1
+            await update.reply_text(f'You are in queue number {position}. Please wait...')
+            await process_download_queue(download_queue, update.reply_to_message, dirs)
+            async for file_path in absolute_paths(dirs):
+                await upload_queue.put(file_path)
+            await process_upload_queue(upload_queue, update.reply_to_message, dirs)
+        else:
+            await update.reply_text('Invalid state. Please send /link again and follow the instructions.')
     else:
-        await update.reply_text('Invalid state. Please send /link again and follow the instructions.')
+        await updatex.answer("Callback query without a valid message context.", show_alert=True)
 
 xbot.run()

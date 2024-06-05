@@ -161,8 +161,16 @@ upload_queue = asyncio.Queue()
 async def process_download_queue(queue, update, dirs):
     pablo = await update.reply_text('Downloading...')
     while not queue.empty():
-        url = await queue.get()
-        await download_file(url, dirs)
+        item = await queue.get()
+        if isinstance(item, tuple):
+            url, format_type = item
+            if format_type == 'mp3':
+                await download_and_convert_to_mp3(url, dirs)
+            else:
+                await download_file(url, dirs)
+        else:
+            url = item
+            await download_file(url, dirs)
         queue.task_done()
         total = queue.qsize()
         await pablo.edit_text(f"Remaining: {total}")
@@ -196,20 +204,19 @@ async def linkloader(bot, update):
 async def handle_links(bot, message):
     user_id = message.from_user.id
     if user_states.get(user_id) == 'awaiting_links':
-        user_states[user_id] = None  # Reset state
-        if BUTTONS:
-            await message.reply('Uploading methods.', True, reply_markup=InlineKeyboardMarkup(CB_BUTTONS))
-        else:
-            dirs = f'downloads/{message.from_user.id}'
-            os.makedirs(dirs, exist_ok=True)
-            position = download_queue.qsize() + 1
-            await message.reply_text(f'You are in queue number {position}. Please wait...')
-            for url in message.text.split('\n'):
-                await download_queue.put(url)
-            await process_download_queue(download_queue, message, dirs)
-            for file_path in await absolute_paths(dirs):
-                await upload_queue.put(file_path)
-            await process_upload_queue(upload_queue, message, dirs)
+        user_states[user_id] = None  # Clear the state
+        dirs = f'downloads/{user_id}'
+        os.makedirs(dirs, exist_ok=True)
+        output_filename = str(user_id)
+        urls = message.text.split('\n')
+        for url in urls:
+            await download_queue.put(url)
+        position = download_queue.qsize()
+        await message.reply_text(f'You are in queue number {position}. Please wait...')
+        await process_download_queue(download_queue, message, dirs)
+        for file_path in await absolute_paths(dirs):
+            await upload_queue.put(file_path)
+        await process_upload_queue(upload_queue, message, dirs)
 
 @xbot.on_message(filters.document & OWNER_FILTER & filters.private)
 async def loader(bot, update):

@@ -235,26 +235,23 @@ async def loader(bot, update):
 @xbot.on_callback_query()
 async def callbacks(bot: Client, updatex: CallbackQuery):
     cb_data = updatex.data
-    update = updatex.message
-    user_id = update.reply_to_message.from_user.id if update.reply_to_message else None
-    if user_id:
-        dirs = f'downloads/{user_id}'
-        os.makedirs(dirs, exist_ok=True)
+    user_id = updatex.from_user.id
+    update = updatex.message.reply_to_message
+    dirs = f'downloads/{user_id}'
+    os.makedirs(dirs, exist_ok=True)
 
-        if user_states.get(user_id) == 'awaiting_format':
-            user_states[user_id] = None
-            urls = user_states.pop('urls', [])
-            for url in urls:
-                await download_queue.put((url, cb_data))
-            position = download_queue.qsize() + 1
-            await update.reply_text(f'You are in queue number {position}. Please wait...')
-            await process_download_queue(download_queue, update.reply_to_message, dirs)
-            async for file_path in absolute_paths(dirs):
-                await upload_queue.put(file_path)
-            await process_upload_queue(upload_queue, update.reply_to_message, dirs)
-        else:
-            await update.reply_text('Invalid state. Please send /link again and follow the instructions.')
+    if user_states.get(user_id) == 'awaiting_format':
+        user_states[user_id] = None
+        urls = user_states.pop('urls', [])
+        for url in urls:
+            await download_queue.put((url, cb_data))
+        position = download_queue.qsize() + 1
+        await update.reply_text(f'You are in queue number {position}. Please wait...')
+        await process_download_queue(download_queue, update, dirs)
+        async for file_path in absolute_paths(dirs):
+            await upload_queue.put(file_path)
+        await process_upload_queue(upload_queue, update, dirs)
     else:
-        await updatex.answer("Callback query without a valid message context.", show_alert=True)
+        await update.reply_text('Invalid state. Please send /link again and follow the instructions.')
 
 xbot.run()

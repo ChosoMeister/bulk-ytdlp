@@ -6,23 +6,35 @@ on:
         description: 'Version tag'
         required: true
         default: 'latest'
+
 jobs:
   publish_image:
     runs-on: ubuntu-latest
     steps:
-      - name: checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
+
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v3
+
       - name: Extract version
         id: get_version
         run: echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_ENV
+
       - name: Build and tag the Docker image
         run: |
           docker build . -t ghcr.io/chosomeister/bulk-ytlp:${{ env.VERSION }}
           docker login -u chosomeister -p ${{ secrets.GGHCR_TOKEN }} ghcr.io
           docker tag ghcr.io/chosomeister/bulk-ytlp:${{ env.VERSION }} ghcr.io/chosomeister/bulk-ytlp:latest
+
       - name: Push the Docker image
         run: |
           docker push ghcr.io/chosomeister/bulk-ytlp:${{ env.VERSION }}
           docker push ghcr.io/chosomeister/bulk-ytlp:latest
+
+      - name: Create GitHub Release
+        id: create_release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GGHCR_TOKEN }}
+        run: |
+          gh release create v${{ env.VERSION }} --title "Release v${{ env.VERSION }}" --notes "Release notes for version ${{ env.VERSION }}"
